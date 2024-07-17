@@ -82,11 +82,13 @@ namespace ACL_ENGINE
         std::set<uint64_t> getDynamicBatch();
         std::set<std::pair<uint64_t, uint64_t>> getDynamicImage();
         std::pair<aclmdlIODims*, size_t> getDynamicDims();
+
         const std::vector<ShapeVector> getOutputShape();
+        const std::vector<TypeId> getOutputDataType();
         const std::vector<ShapeVector> getInputShape();
         const std::vector<TypeId> getInputDataType();
-        const std::vector<TypeId> getOutputDataType();
-        int CheckAndSetDynFlag();
+
+        int checkAndSetDynFlag();
         bool initInputsBuffer();
         bool initOutputsBuffer();
         void destroyInputsBuffer();
@@ -106,6 +108,16 @@ namespace ACL_ENGINE
         bool resizeDynamicInputShapeRange(const std::vector<std::vector<int64_t>>& new_shapes);
         bool resizeDynamicBatchAndImageSize(const std::vector<std::vector<int64_t>>& new_shapes);
         bool resize(const std::vector<std::vector<int64_t>>& new_shapes);
+
+        bool checkInputTensors(const std::vector<EngineTensor*>& inputs);
+        bool checkOutputTensors(const std::vector<EngineTensor*>& outputs);
+        bool checkAndInitInput(const std::vector<EngineTensor*>& inputs);
+        bool checkAndInitOutput(const std::vector<EngineTensor*>& outputs);
+        void checkAndInitDynOutputDeviceBuf(const EngineTensor* output, const AclTensorInfo& output_info,
+            void** output_device_buffer, size_t* output_buf_size, size_t output_idx);
+
+        void freeResourceInput(std::vector<AclTensorInfo>& acl_tensor_info);
+        void freeResourceOutput(std::vector<AclTensorInfo>& acl_tensor_info);
 
     private:
         bool                                                               m_status = false;
