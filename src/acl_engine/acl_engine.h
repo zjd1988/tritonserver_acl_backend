@@ -119,6 +119,8 @@ namespace ACL_ENGINE
         void freeResourceInput(std::vector<AclTensorInfo>& acl_tensor_info);
         void freeResourceOutput(std::vector<AclTensorInfo>& acl_tensor_info);
 
+        bool getOutputs(const std::vector<EngineTensor*>& outputs);
+
     private:
         bool                                                               m_status = false;
         // ascendcl model

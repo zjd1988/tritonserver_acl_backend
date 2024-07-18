@@ -27,6 +27,7 @@
 #include "acl/acl.h"
 #include "acl/acl_mdl.h"
 #include "acl/acl_rt.h"
+#include "acl_engine/non_copyable.h"
 
 namespace ACL_ENGINE
 {
@@ -40,21 +41,21 @@ namespace ACL_ENGINE
         std::vector<std::vector<int64_t>>               input_shapes;
     } AclDynamicShapeOptions;
 
-    class DynShapeProcess
+    class DynShapeProcess : NonCopyable
     {
     public:
         bool Init(const AclDynamicShapeOptions &options);
-        bool CheckAndGetBatchSize(const std::vector<ShapeVector> &new_shapes, int32_t *batch_size);
-        bool CheckAndGetDynamicDims(const std::vector<ShapeVector> &new_shapes, aclmdlIODims *dynamic_dims);
-        bool CheckAndGetImageSize(const std::vector<ShapeVector> &new_shapes, int32_t *height, int32_t *width);
+        bool CheckAndGetBatchSize(const std::vector<std::vector<int64_t>> &new_shapes, int32_t *batch_size);
+        bool CheckAndGetDynamicDims(const std::vector<std::vector<int64_t>> &new_shapes, aclmdlIODims *dynamic_dims);
+        bool CheckAndGetImageSize(const std::vector<std::vector<int64_t>> &new_shapes, int32_t *height, int32_t *width);
 
     private:
-        bool CheckBatchSize(const std::vector<ShapeVector> &new_shapes);
-        bool CheckDynamicDims(const std::vector<ShapeVector> &new_shapes);
-        bool CheckImageSize(const std::vector<ShapeVector> &new_shapes);
-        bool GetRealBatchSize(const std::vector<ShapeVector> &new_shapes, int32_t *batch_size);
-        bool GetRealDynamicDims(const std::vector<ShapeVector> &new_shapes, aclmdlIODims *dynamic_dims);
-        bool GetRealImageSize(const std::vector<ShapeVector> &new_shapes, int32_t *height, int32_t *width);
+        bool CheckBatchSize(const std::vector<std::vector<int64_t>> &new_shapes);
+        bool CheckDynamicDims(const std::vector<std::vector<int64_t>> &new_shapes);
+        bool CheckImageSize(const std::vector<std::vector<int64_t>> &new_shapes);
+        bool GetRealBatchSize(const std::vector<std::vector<int64_t>> &new_shapes, int32_t *batch_size);
+        bool GetRealDynamicDims(const std::vector<std::vector<int64_t>> &new_shapes, aclmdlIODims *dynamic_dims);
+        bool GetRealImageSize(const std::vector<std::vector<int64_t>> &new_shapes, int32_t *height, int32_t *width);
 
         AclDynamicShapeOptions acl_options_;
         size_t input_data_idx_ = 0;
