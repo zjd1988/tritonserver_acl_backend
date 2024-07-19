@@ -219,7 +219,7 @@ namespace ACL_ENGINE
             }
         }
         auto format = acl_options_.input_format[input_data_idx_];
-        if (format == mindspore::Format::NHWC)
+        if (format == EngineTensor::TENSOR_FORMAT_TYPE_NHWC)
         {
             if ((original_shape[kNHWCCIdx] != kUnknownDim && 
                 (original_shape[kNHWCCIdx] != cur_shape[kNHWCCIdx])) ||

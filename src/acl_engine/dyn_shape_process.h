@@ -28,6 +28,7 @@
 #include "acl/acl_mdl.h"
 #include "acl/acl_rt.h"
 #include "acl_engine/non_copyable.h"
+#include "acl_engine/engine_tensor.h"
 
 namespace ACL_ENGINE
 {
@@ -37,7 +38,7 @@ namespace ACL_ENGINE
         std::set<uint64_t>                              batch_size;
         std::set<std::pair<uint64_t, uint64_t>>         image_size;
         std::pair<aclmdlIODims*, size_t>                dynamic_dims;
-        std::vector<Format>                             input_format;
+        std::vector<EngineTensor::TensorFormatType>     input_format;
         std::vector<std::vector<int64_t>>               input_shapes;
     } AclDynamicShapeOptions;
 
