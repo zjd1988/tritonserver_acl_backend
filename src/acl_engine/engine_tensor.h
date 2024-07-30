@@ -44,8 +44,10 @@ namespace ACL_ENGINE
         /** dimension type used to create tensor */
         enum TensorFormatType 
         {
+            INVALID_TENSOR_FORMAT_TYPE     = -1,
             TENSOR_FORMAT_TYPE_NCHW        = 0,
             TENSOR_FORMAT_TYPE_NHWC        = 1,
+            TENSOR_FORMAT_TYPE_ND          = 2,
             TENSOR_FORMAT_TYPE_MAX         ,
         };
     private:

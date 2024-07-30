@@ -190,6 +190,64 @@ namespace ACL_ENGINE
         return tensor_type;
     }
 
+    static aclDataType convertTensorFormatToAscendCLFormat(EngineTensor::TensorFormatType tensor_format)
+    {
+        aclFormat acl_format;
+        switch (acl_type)
+        {
+            case EngineTensor::TENSOR_FORMAT_TYPE_NCHW:
+            {
+                acl_format = ACL_FORMAT_NCHW;
+                break;
+            }
+            case EngineTensor::TENSOR_FORMAT_TYPE_NHWC:
+            {
+                acl_format = ACL_FORMAT_NHWC;
+                break;
+            }
+            case EngineTensor::TENSOR_FORMAT_TYPE_ND:
+            {
+                acl_format = ACL_FORMAT_ND;
+                break;
+            }
+            default:
+            {
+                acl_format = ACL_FORMAT_UNDEFINED;
+                break;
+            }
+        }
+        return acl_format;
+    }
+
+    static EngineTensor::TensorFormatType convertAscendCLFormatToTensorFormat(aclFormat acl_format)
+    {
+        EngineTensor::TensorFormatType tensor_format;
+        switch (acl_type)
+        {
+            case ACL_FORMAT_NCHW:
+            {
+                tensor_format = EngineTensor::TENSOR_FORMAT_TYPE_NCHW;
+                break;
+            }
+            case ACL_FORMAT_NHWC:
+            {
+                tensor_format = EngineTensor::TENSOR_FORMAT_TYPE_NHWC;
+                break;
+            }
+            case ACL_FORMAT_ND:
+            {
+                tensor_format = EngineTensor::TENSOR_FORMAT_TYPE_ND;
+                break;
+            }
+            default:
+            {
+                tensor_format = EngineTensor::INVALID_TENSOR_FORMAT_TYPE;
+                break;
+            }
+        }
+        return tensor_format;
+    }
+
     AscendCLEngine::AscendCLEngine(const EngineConfig& config, const std::vector<std::string>& model_files)
     {
         initAclResource();
@@ -260,6 +318,7 @@ namespace ACL_ENGINE
             m_context = nullptr;
         }
 
+        // reset device
         rt_ret = aclrtResetDevice(m_engine_config.device_id);
         if (ACL_ERROR_NONE != rt_ret)
         {
@@ -268,18 +327,18 @@ namespace ACL_ENGINE
             assert(0);
         }
 
+        // delete dynamic dims
+        if (nullptr != m_dynamic_dims)
+        {
+            delete[] m_dynamic_dims;
+            m_dynamic_dims = nullptr;
+        }
+
         return;
     }
 
     void AscendCLEngine::printEngineInfo()
     {
-        // check model valid
-        if (!m_status)
-        {
-            ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl model has not been loaded");
-            return -1;
-        }
-
         // engine config
         auto& config = m_engine_config;
         ACL_LOG(ACL_LOG_LEVEL_INFO, "device_id                      : {}", config.device_id);
@@ -350,7 +409,7 @@ namespace ACL_ENGINE
         size_t batch_count = dynamic_batch.batchCount;
         if (batch_count > ACL_MAX_BATCH_NUM)
         {
-            ACL_LOG(ACL_LOG_LEVEL_ERROR, "real batch count {} is larger than max {}", batch_count, ACL_MAX_BATCH_NUM);
+            ACL_LOG(ACL_LOG_LEVEL_ERROR, "real batch count {} is larger than max batch num {}", batch_count, ACL_MAX_BATCH_NUM);
             return -1;
         }
 
@@ -386,7 +445,7 @@ namespace ACL_ENGINE
         size_t hw_count = dynamic_hw.hwCount;
         if (hw_count > ACL_MAX_HW_NUM)
         {
-            ACL_LOG(ACL_LOG_LEVEL_ERROR, "Real hw count {} is larger than max {}", hw_count, ACL_MAX_HW_NUM);
+            ACL_LOG(ACL_LOG_LEVEL_ERROR, "Real hw count {} is larger than max hw num {}", hw_count, ACL_MAX_HW_NUM);
             return -1;
         }
 
@@ -424,6 +483,7 @@ namespace ACL_ENGINE
         if (0 == gear_conut)
         {
             ACL_LOG(ACL_LOG_LEVEL_DEBUG, "gear_conut is zero");
+            dynamic_dims = std::make_pair(nullptr, 0);
             return 0;
         }
 
@@ -455,7 +515,7 @@ namespace ACL_ENGINE
         static const std::map<aclFormat, EngineTensor::TensorFormatType> acl_format_map = {
             {ACL_FORMAT_NCHW, EngineTensor::TENSOR_FORMAT_TYPE_NCHW}, 
             {ACL_FORMAT_NHWC, EngineTensor::TENSOR_FORMAT_TYPE_NHWC},
-            {ACL_FORMAT_ND, EngineTensor::TENSOR_FORMAT_TYPE_NCHW}};
+            {ACL_FORMAT_ND, EngineTensor::TENSOR_FORMAT_TYPE_ND}};
 
         for (size_t index = 0; index < m_data_input_num; ++index)
         {
@@ -571,7 +631,7 @@ namespace ACL_ENGINE
             ret = aclmdlGetInputDimsV2(m_model_desc, i, &input_dims);
             if (ACL_ERROR_NONE != ret)
             {
-                ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl model get input dims failed");
+                ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl model get input dims failed, ret:{}", int(ret));
                 return false;
             }
             for (size_t j = 0; j < input_dims.dimCount; ++j)
@@ -608,7 +668,7 @@ namespace ACL_ENGINE
             ret = aclmdlGetOutputDims(m_model_desc, i, &output_dims);
             if (ACL_ERROR_NONE != ret)
             {
-                ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl model get output dims failed");
+                ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl model get output dims failed, ret:{}", int(ret));
                 return false;
             }
             for (size_t j = 0; j < output_dims.dimCount; ++j)
@@ -650,7 +710,8 @@ namespace ACL_ENGINE
                 ret = aclrtMalloc(data_mem_buffer, buffer_size, ACL_MEM_MALLOC_HUGE_FIRST);
                 if (ACL_ERROR_NONE != ret)
                 {
-                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "malloc device buffer failed, buffer size {}", buffer_size);
+                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "malloc device buffer failed, buffer size {}, ret:{}", buffer_size, 
+                        int(ret));
                     return false;
                 }
             }
@@ -659,7 +720,8 @@ namespace ACL_ENGINE
                 ret = aclrtMallocHost(data_mem_buffer, buffer_size);
                 if (ACL_ERROR_NONE != ret)
                 {
-                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "malloc host buffer failed, buffer size {}", buffer_size);
+                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "malloc host buffer failed, buffer size {}, ret:{}", buffer_size, 
+                        int(ret));
                     return false;
                 }
             }
@@ -744,7 +806,7 @@ namespace ACL_ENGINE
                 ret = aclmdlSetDatasetTensorDesc(m_input_dataset, desc, index);
                 if (ACL_ERROR_NONE != ret)
                 {
-                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "aclmdlSetDatasetTensorDesc failed, ret:{}", int(ret));
+                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "input:{} aclmdlSetDatasetTensorDesc failed, ret:{}", index, int(ret));
                     return false;
                 }
             }
@@ -754,7 +816,7 @@ namespace ACL_ENGINE
                 ACL_LOG(ACL_LOG_LEVEL_ERROR, "get name of input:{} failed", index);
                 return false;
             }
-            ACL_LOG(ACL_LOG_LEVEL_DEBUG, "name of input:{} is {}", index, input_name);
+            ACL_LOG(ACL_LOG_LEVEL_DEBUG, "name of input:{} is {}, buffer size {}", index, input_name, buffer_size);
             m_input_infos.emplace_back(AclTensorInfo{data_mem_buffer, data_mem_buffer, buffer_size, buffer_size, 
                 data_type, shape, input_name});
         }
@@ -823,13 +885,20 @@ namespace ACL_ENGINE
                 ACL_LOG(ACL_LOG_LEVEL_ERROR, "get name of output {} failed", index);
                 return false;
             }
-            // 由于ascend_cl输出名称会自动加前缀且用:分开
-            auto pos = output_name.rfind(":");
-            if (pos != std::string::npos)
-                output_name = output_name.substr(pos + 1);
-            ACL_LOG(ACL_LOG_LEVEL_DEBUG, "name of om output {} is {} buffer size {}", index, output_name, buffer_size);
+            // get tensor real name
+            std::string real_name = aclmdlGetTensorRealName(m_model_desc, output_name.c_str())
+            if (real_name.empty())
+            {
+                ACL_LOG(ACL_LOG_LEVEL_ERROR, "get real name of output {}:{} failed", index, output_name);
+                return false;
+            }
+            // ascend_cl output name will have prefix, split with ':', like prefix:name
+            // auto pos = output_name.rfind(":");
+            // if (pos != std::string::npos)
+            //     output_name = output_name.substr(pos + 1);
+            ACL_LOG(ACL_LOG_LEVEL_DEBUG, "real name of output {} is {}, buffer size {}", index, real_name, buffer_size);
             m_output_infos.emplace_back(AclTensorInfo{data_mem_buffer, data_mem_buffer, buffer_size, buffer_size, 
-                data_type, shape, output_name});
+                data_type, shape, real_name});
         }
         ACL_LOG(ACL_LOG_LEVEL_DEBUG, "create model output success");
         return true;
@@ -904,8 +973,7 @@ namespace ACL_ENGINE
         m_output_dataset = nullptr;
     }
 
-    int AscendCLEngine::initAclModelFromBuffer(const char* model_data, const size_t& data_len, 
-        const EngineConfig& acl_config)
+    int AscendCLEngine::initAclModelFromBuffer(const char* model_data, const size_t& data_len, const EngineConfig& acl_config)
     {
 
         // set device 
@@ -1145,8 +1213,8 @@ namespace ACL_ENGINE
             return -1;
         }
 
-        // construct new shapes
-        std::vector<std::vector<int64_t>> new_shapes;
+        // construct new shapes map
+        std::map<std::string, std::vector<int64_t>> new_shapes;
         for (auto index = 0; index < m_data_input_num; index++)
         {
             auto& input = m_input_infos[index];
@@ -1157,7 +1225,7 @@ namespace ACL_ENGINE
                 return -1;
             }
             std::vector<int64_t>& input_shape = input_tensors_map[input_name]->shape();
-            new_shapes.emplace_back(input_shape);
+            new_shapes[input_name] = input_shape;
         }
 
         // if input tensor shape not equal to acl engine shape, need to resize acl engine
@@ -1210,13 +1278,13 @@ namespace ACL_ENGINE
         return 0;
     }
 
-    int AscendCLEngine::resizeEngine(std::map<std::string, std::vector<int64_t>>& new_shapes)
+    int AscendCLEngine::resizeEngine(const std::map<std::string, std::vector<int64_t>>& new_shapes)
     {
         // check model valid
         if (!m_status)
         {
             ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl model has not been loaded");
-            return false;
+            return -1;
         }
 
         // set current context
@@ -1227,8 +1295,23 @@ namespace ACL_ENGINE
             return -1;
         }
 
-        // acl model resize
-        if (!resize(new_shapes))
+        // construct new shape list
+        std::vector<std::vector<int64_t>> new_shape_list;
+        for (auto index = 0; index < m_data_input_num; index++)
+        {
+            auto& input = m_input_infos[index];
+            std::string input_name = input.name;
+            if (new_shapes.find(input_name) == new_shapes.end())
+            {
+                ACL_LOG(ACL_LOG_LEVEL_ERROR, "input tensor shapes map cannot find tensor: {}", input_name);
+                return -1;
+            }
+            std::vector<int64_t> input_shape = new_shapes[input_name];
+            new_shape_list.emplace_back(input_shape);
+        }
+
+        // acl model resize with shape list
+        if (!resize(new_shape_list))
         {
             ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl model resize fail");
             return -1;
@@ -1317,7 +1400,7 @@ namespace ACL_ENGINE
             }
         }
 
-        // copy output tensor data
+        // copy output tensors data
         if (!getOutputs(output_tensors))
         {
             ACL_LOG(ACL_LOG_LEVEL_ERROR, "build output tensors failed");
@@ -1465,13 +1548,6 @@ namespace ACL_ENGINE
 
     bool AscendCLEngine::resetOutputSize()
     {
-        // check model desc valid
-        if (nullptr == m_model_desc)
-        {
-            ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl model desc is nullptr");
-            return false;
-        }
-
         // reset output info size
         size_t output_size = aclmdlGetNumOutputs(m_model_desc);
         for (size_t index = 0; index < output_size; index++)
@@ -1516,38 +1592,45 @@ namespace ACL_ENGINE
                 return false;
             }
         }
-        for (size_t i = 0; i < new_shapes.size(); ++i)
+        for (size_t index = 0; index < new_shapes.size(); ++index)
         {
             if (m_is_dynamic_resize_input)
             {
                 void *data_buf = nullptr;
-                if (!createDataBuffer(&data_buf, m_input_infos[i].buffer_size, m_input_dataset))
+                if (!createDataBuffer(&data_buf, m_input_infos[index].buffer_size, m_input_dataset))
                 {
-                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "add input data buffer failed");
+                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "add index:{} input data buffer failed", index);
                     return false;
                 }
-                auto data_type = aclmdlGetInputDataType(m_model_desc, i);
-                std::string input_name = aclmdlGetInputNameByIndex(m_model_desc, i);
+                auto data_type = aclmdlGetInputDataType(m_model_desc, index);
+                std::string input_name = aclmdlGetInputNameByIndex(m_model_desc, index);
                 if (input_name.empty())
                 {
-                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "get name of input {} failed", i);
+                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "get name of input {} failed", index);
                     return false;
                 }
-                ACL_LOG(ACL_LOG_LEVEL_DEBUG, "name of input {} is {}", i, input_name);
-                m_input_infos[i].cur_device_data = data_buf;
-                m_input_infos[i].device_data = data_buf;
-                m_input_infos[i].data_type = data_type;
-                m_input_infos[i].name = input_name;
-                auto data_buffer = aclmdlGetDatasetBuffer(m_input_dataset, i);
-                m_input_infos[i].dynamic_acl_data_buffer = data_buffer;
+                ACL_LOG(ACL_LOG_LEVEL_DEBUG, "name of input {} is {}", index, input_name);
+                m_input_infos[index].cur_device_data = data_buf;
+                m_input_infos[index].device_data = data_buf;
+                m_input_infos[index].data_type = data_type;
+                m_input_infos[index].name = input_name;
+                auto data_buffer = aclmdlGetDatasetBuffer(m_input_dataset, index);
+                if (nullptr == data_buffer)
+                {
+                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "failed to get dataset buffer of input {}", index);
+                    return false;
+                }
+                m_input_infos[index].dynamic_acl_data_buffer = data_buffer;
             }
 
-            aclTensorDesc *input_desc = aclCreateTensorDesc(ACL_FLOAT, new_shapes[i].size(), &new_shapes[i][0], ACL_FORMAT_NCHW);
-            auto ret = aclmdlSetDatasetTensorDesc(m_input_dataset, input_desc, i);
-            m_input_infos[i].dynamic_acl_tensor_desc = input_desc;
+            aclDataType data_type = aclmdlGetInputDataType(m_model_desc, index);
+            aclFormat format = aclmdlGetInputFormat(m_model_desc, index);
+            aclTensorDesc *input_desc = aclCreateTensorDesc(data_type, new_shapes[index].size(), &new_shapes[index][0], format);
+            auto ret = aclmdlSetDatasetTensorDesc(m_input_dataset, input_desc, index);
+            m_input_infos[index].dynamic_acl_tensor_desc = input_desc;
             if (ACL_ERROR_NONE != ret)
             {
-                ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl set dataset tensor desc failed, ret:{}", int(ret));
+                ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl set input:{} dataset tensor desc failed, ret:{}", index, int(ret));
                 return false;
             }
         }
@@ -1559,20 +1642,22 @@ namespace ACL_ENGINE
     bool AscendCLEngine::resizeDynamicInputShapeRange(const std::vector<std::vector<int64_t>>& new_shapes)
     {
         ACL_LOG(ACL_LOG_LEVEL_DEBUG, "start to resize dynamic input shape range");
-        for (size_t i = 0; i < new_shapes.size(); ++i)
+        for (size_t index = 0; index < new_shapes.size(); ++index)
         {
-            std::vector<int64_t> shape = new_shapes[i];
-            auto buffer_size = aclmdlGetInputSizeByIndex(m_model_desc, i);
-            auto data_type = aclmdlGetInputDataType(m_model_desc, i);
+            std::vector<int64_t> shape = new_shapes[index];
+            auto buffer_size = aclmdlGetInputSizeByIndex(m_model_desc, index);
+            auto data_type = aclmdlGetInputDataType(m_model_desc, index);
+            aclFormat format = aclmdlGetInputFormat(m_model_desc, index);
             size_t elem_count = 1;
-            for (size_t j = 0; j < shape.size(); ++j)
+            for (size_t shape_idx = 0; shape_idx < shape.size(); ++shape_idx)
             {
-                if (shape[j] < 0)
+                if (shape[shape_idx] < 0)
                 {
-                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "the resize shape has the dim less than 0");
+                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "the resize shape:{} has the dim less than 0", 
+                        spdlog::fmt_lib::join(shape, ", "));
                     return false;
                 }
-                elem_count *= shape[j];
+                elem_count *= shape[shape_idx];
             }
             auto new_buffer_size = elem_count * aclDataTypeSize(data_type);
             if (new_buffer_size > buffer_size)
@@ -1580,12 +1665,13 @@ namespace ACL_ENGINE
                 ACL_LOG(ACL_LOG_LEVEL_ERROR, "the resize shape is over shape range");
                 return false;
             }
-            m_input_infos[i].dims = shape;
-            aclTensorDesc *input_desc = aclCreateTensorDesc(ACL_FLOAT, new_shapes[i].size(), &new_shapes[i][0], ACL_FORMAT_NCHW);
-            auto ret = aclmdlSetDatasetTensorDesc(m_input_dataset, input_desc, i);
-            if (ret != ACL_ERROR_NONE)
+            m_input_infos[index].dims = shape;
+            aclTensorDesc *input_desc = aclCreateTensorDesc(data_type, new_shapes[index].size(), &new_shapes[index][0], format);
+            auto ret = aclmdlSetDatasetTensorDesc(m_input_dataset, input_desc, index);
+            m_input_infos[index].dynamic_acl_tensor_desc = input_desc;
+            if (ACL_ERROR_NONE != ret)
             {
-                ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl set dataset tensor desc failed");
+                ACL_LOG(ACL_LOG_LEVEL_ERROR, "acl set input:{} dataset tensor desc failed, ret:{}", index, int(ret));
                 return false;
             }
         }
@@ -1593,12 +1679,12 @@ namespace ACL_ENGINE
         return true;
     }
 
-    bool AscendCLEngine::resizeDynamicBatchAndImageSize(const std::vector<std::vector<int64_t>>& new_shapes)
+    bool AscendCLEngine::resizeDynamicBatchOrImageSizeOrDynamicDims(const std::vector<std::vector<int64_t>>& new_shapes)
     {
-        // check model desc and input dataset valid
-        if (m_model_desc == nullptr || m_input_dataset == nullptr)
+        ACL_LOG(ACL_LOG_LEVEL_DEBUG, "start to resize Dynamic Batch or Image Size or Dynamic Dims");
+        if (nullptr == m_input_dataset)
         {
-            ACL_LOG(ACL_LOG_LEVEL_ERROR, "model is not inited");
+            ACL_LOG(ACL_LOG_LEVEL_ERROR, "input dataset should be init first");
             return false;
         }
         size_t index;
@@ -1661,11 +1747,13 @@ namespace ACL_ENGINE
             ACL_LOG(ACL_LOG_LEVEL_ERROR, "not support dynamic input");
             return false;
         }
+
         if (!resetInputSize(new_shapes))
         {
             ACL_LOG(ACL_LOG_LEVEL_ERROR, "reset input size failed");
             return false;
         }
+
         if (!resetOutputSize())
         {
             ACL_LOG(ACL_LOG_LEVEL_ERROR, "reset output size failed");
@@ -1721,7 +1809,7 @@ namespace ACL_ENGINE
             return false;
         }
 
-        if (!resizeDynamicBatchAndImageSize(new_shapes))
+        if (!resizeDynamicBatchOrImageSizeOrDynamicDims(new_shapes))
         {
             ACL_LOG(ACL_LOG_LEVEL_ERROR, "resize dynamic batch and image size failed");
             return false;
@@ -1737,20 +1825,20 @@ namespace ACL_ENGINE
             ACL_LOG(ACL_LOG_LEVEL_ERROR, "expect input size to be {}, but got {}", m_data_input_num, input_tensors.size());
             return false;
         }
-        for (size_t i = 0; i < input_tensors.size(); ++i)
+        for (size_t index = 0; index < input_tensors.size(); ++index)
         {
-            auto &tensor = input_tensors[i];
-            auto &info = m_input_infos[i];
+            auto &tensor = input_tensors[index];
+            auto &info = m_input_infos[index];
             if (tensor->shape() != info.dims)
             {
                 ACL_LOG(ACL_LOG_LEVEL_ERROR, "note: input {} shape not match, required {}, given {}."
-                    "please check input shape has been modified by DVPP method.", i, 
+                    "please check input shape has been modified by DVPP method.", index, 
                     spdlog::fmt_lib::join(info.dims, ", "), spdlog::fmt_lib::join(tensor->shape(), ", "));
                 return false;
             }
             if (tensor->getTensorDataType() != convertAscendCLTypeToTensorType(info.data_type))
             {
-                ACL_LOG(ACL_LOG_LEVEL_ERROR, "note: input {} data type not match, required {}, but given {}", i, 
+                ACL_LOG(ACL_LOG_LEVEL_ERROR, "note: input {} data type not match, required {}, but given {}", index, 
                     static_cast<int>(convertAscendCLTypeToTensorType(info.data_type)), 
                     static_cast<int>(tensor->getTensorDataType()));
                 return false;
@@ -1761,14 +1849,14 @@ namespace ACL_ENGINE
             {
                 if (!m_is_dynamic_input && !m_is_dynamic_shape_range && host_size != info.buffer_size)
                 {
-                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "input {} data size not match, required size {}, but given count {}", i, 
+                    ACL_LOG(ACL_LOG_LEVEL_ERROR, "input {} data size not match, required size {}, but given count {}", index, 
                         info.buffer_size, host_size);
                     return false;
                 }
             }
             else
             {
-                ACL_LOG(ACL_LOG_LEVEL_ERROR, "failed to get data from input {}", i);
+                ACL_LOG(ACL_LOG_LEVEL_ERROR, "failed to get data from input {}", index);
                 return false;
             }
         }
@@ -1798,7 +1886,9 @@ namespace ACL_ENGINE
             auto& output_info = m_output_infos[index];
             auto output_shape = output_info.dims;
             auto output_dtype = convertAscendCLTypeToTensorType(output_info.data_type);
-            auto output_format = EngineTensor::TENSOR_FORMAT_TYPE_NCHW;
+            // use TENSOR_FORMAT_TYPE_ND as output default format
+            // convertAscendCLFormatToTensorFormat()
+            auto output_format = EngineTensor::TENSOR_FORMAT_TYPE_ND;
             if (index >= outputs.size())
             {
                 std::shared_ptr<EngineTensor> tmp_tensor(EngineTensor::create(output_shape, output_dtype, output_format));
@@ -1919,7 +2009,7 @@ namespace ACL_ENGINE
         // check outputs
         if (!checkOutputTensors(outputs))
         {
-            ACL_LOG(ACL_LOG_LEVEL_ERROR, "check output tensor failed");
+            ACL_LOG(ACL_LOG_LEVEL_ERROR, "check output tensors failed");
             return false;
         }
         aclError ret;
@@ -2003,9 +2093,9 @@ namespace ACL_ENGINE
 
     void AscendCLEngine::freeResourceOutput(std::vector<AclTensorInfo>& acl_tensor_info)
     {
-        for (size_t i = 0; i < acl_tensor_info->size(); i++)
+        for (size_t index = 0; index < acl_tensor_info->size(); index++)
         {
-            auto &item = (*acl_tensor_info)[i];
+            auto &item = acl_tensor_info[index];
             if (item.device_data != nullptr)
             {
                 ACL_LOG(ACL_LOG_LEVEL_DEBUG, "freeing device buffer at addr: 0x{:x}", (size_t)item.device_data);

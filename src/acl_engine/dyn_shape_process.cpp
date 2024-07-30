@@ -316,7 +316,7 @@ namespace ACL_ENGINE
         auto format = acl_options_.input_format[input_data_idx_];
         int64_t height;
         int64_t width;
-        if (format == mindspore::Format::NHWC)
+        if (format == EngineTensor::TENSOR_FORMAT_TYPE_NHWC)
         {
             height = shape[kNHWCHeightIdx];
             width = shape[kNHWCWidthIdx];
@@ -334,8 +334,8 @@ namespace ACL_ENGINE
                 height, width);
             return false;
         }
-        *height_p = LongToInt(height);
-        *width_p = LongToInt(width);
+        *height_p = static_cast<int32_t>(height);
+        *width_p = static_cast<int32_t>(width);
         ACL_LOG(ACL_LOG_LEVEL_DEBUG, "current height {} width {}", height, width);
         return true;
     }

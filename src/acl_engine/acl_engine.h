@@ -70,7 +70,7 @@ namespace ACL_ENGINE
         bool status() { return m_status; }
         int setEngineInputTensors(std::map<std::string, EngineTensor*>& input_tensors_map);
         int getEngineOutputTensors(std::map<std::string, EngineTensor*>& output_tensors_map);
-        int resizeEngine(std::map<std::string, std::vector<int64_t>>& new_shapes);
+        int resizeEngine(const std::map<std::string, std::vector<int64_t>>& new_shapes);
         int runEngine();
         int runEngine(std::map<std::string, EngineTensor*>& input_tensors_map, 
             std::map<std::string, EngineTensor*>& output_tensors_map);
@@ -105,10 +105,12 @@ namespace ACL_ENGINE
         bool isDynamicImageSize();
         bool isDynamicDims();
 
+        bool resetInputSize(const std::vector<std::vector<int64_t>>& new_shapes);
+        bool resetOutputSize();
         bool resetDynamicOutputTensor(std::vector<std::shared_ptr<EngineTensor>>& outputs);
         bool resizeDynamicInputShape(const std::vector<std::vector<int64_t>>& new_shapes);
         bool resizeDynamicInputShapeRange(const std::vector<std::vector<int64_t>>& new_shapes);
-        bool resizeDynamicBatchAndImageSize(const std::vector<std::vector<int64_t>>& new_shapes);
+        bool resizeDynamicBatchOrImageSizeOrDynamicDims(const std::vector<std::vector<int64_t>>& new_shapes);
         bool resize(const std::vector<std::vector<int64_t>>& new_shapes);
 
         bool checkInputTensors(const std::vector<EngineTensor*>& inputs);
